@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ensureInitialized,
   fetchEmailItems,
   fetchTeamsChannelMatches,
   fetchChannelMessages,
@@ -27,12 +28,28 @@ function saveSelections(selections) {
 }
 
 export default function App() {
-  const [account, setAccount] = useState(() => getActiveAccount());
+  const [account, setAccount] = useState(null);
   const [itemsByProject, setItemsByProject] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [channelMatches, setChannelMatches] = useState({});
   const [channelSelections, setChannelSelections] = useState(() => loadStoredSelections());
+
+  useEffect(() => {
+    let active = true;
+    ensureInitialized()
+      .then(() => {
+        if (!active) return;
+        setAccount(getActiveAccount());
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err.message || "MSAL initialization failed");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (channelSelections) saveSelections(channelSelections);

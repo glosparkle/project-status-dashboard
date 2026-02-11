@@ -3,8 +3,15 @@ import { msalConfig, graphScopes } from "./config.js";
 import { subDays } from "date-fns";
 
 const msalInstance = new PublicClientApplication(msalConfig);
+const initPromise = msalInstance.initialize();
+
+export async function ensureInitialized() {
+  await initPromise;
+  return msalInstance;
+}
 
 export async function signIn() {
+  await ensureInitialized();
   const loginRequest = { scopes: graphScopes };
   const response = await msalInstance.loginPopup(loginRequest);
   msalInstance.setActiveAccount(response.account);
@@ -12,6 +19,7 @@ export async function signIn() {
 }
 
 export async function signOut() {
+  await ensureInitialized();
   const account = msalInstance.getActiveAccount();
   if (account) {
     await msalInstance.logoutPopup({ account });
@@ -30,6 +38,7 @@ export function getActiveAccount() {
 }
 
 async function getToken() {
+  await ensureInitialized();
   const account = getActiveAccount();
   if (!account) throw new Error("No active account");
   try {
