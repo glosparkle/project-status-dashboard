@@ -1,3 +1,5 @@
+const DATA_WORKBOOK_URL = "data/Mobile%20Credentials%20Departments.xlsx";
+
 const state = {
   departments: [],
   timeline: [],
@@ -9,10 +11,11 @@ const state = {
     dir: "asc"
   },
   meta: {
-    fileName: "",
+    source: DATA_WORKBOOK_URL,
     sheetsScanned: 0,
     deptRows: 0,
-    timelineRows: 0
+    timelineRows: 0,
+    lastLoadedAt: null
   }
 };
 
@@ -24,57 +27,44 @@ const timelineList = document.getElementById("timelineList");
 const timelineWindow = document.getElementById("timelineWindow");
 const healthGrid = document.getElementById("healthGrid");
 const departmentRows = document.getElementById("departmentRows");
-
-const filesUpload = document.getElementById("filesUpload");
-const clearDataBtn = document.getElementById("clearDataBtn");
-const filesStatus = document.getElementById("filesStatus");
 const globalStatus = document.getElementById("globalStatus");
 const readinessTableHeaders = document.querySelectorAll("#readinessTable thead th[data-sort]");
 
-function setupHandlers() {
+function setup() {
   setupTableSorting();
+  loadHostedData();
+}
 
-  filesUpload.addEventListener("change", async (event) => {
-    const [file] = event.target.files || [];
-    if (!file) return;
+async function loadHostedData() {
+  try {
+    globalStatus.textContent = "Loading latest roadmap data...";
 
-    try {
-      const parsed = await parseRoadmapWorkbook(file);
-      applyParsedData(parsed, file.name);
-      filesStatus.textContent = `Loaded ${file.name}: ${parsed.deptRows.length} dept rows, ${parsed.timelineRows.length} timeline rows from ${parsed.sheetsScanned} sheet(s).`;
-      render();
-    } catch (error) {
-      filesStatus.textContent = `Import failed: ${error.message}`;
+    if (typeof XLSX === "undefined") {
+      throw new Error("Workbook parser failed to load");
     }
-  });
 
-  clearDataBtn.addEventListener("click", () => {
+    const response = await fetch(DATA_WORKBOOK_URL, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Unable to load ${DATA_WORKBOOK_URL} (${response.status})`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const parsed = parseRoadmapWorkbook(workbook);
+    applyParsedData(parsed);
+    render();
+  } catch (error) {
     state.departments = [];
     state.timeline = [];
     state.phases = [];
     state.health = [];
     state.summary = null;
-    state.meta = { fileName: "", sheetsScanned: 0, deptRows: 0, timelineRows: 0 };
-
-    filesUpload.value = "";
-    filesStatus.textContent = "No file loaded";
-    globalStatus.textContent = "Waiting for roadmap file";
     render();
-  });
+    globalStatus.textContent = `Data load error: ${error.message}`;
+  }
 }
 
-async function parseRoadmapWorkbook(file) {
-  if (typeof XLSX === "undefined") {
-    throw new Error("Workbook parser not available. Refresh and retry.");
-  }
-
-  if (!String(file.name || "").toLowerCase().endsWith(".xlsx")) {
-    throw new Error("Only .xlsx files are supported.");
-  }
-
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array" });
-
+function parseRoadmapWorkbook(workbook) {
   const matrices = workbook.SheetNames.map((sheetName) => ({
     sheetName,
     matrix: XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" })
@@ -110,7 +100,7 @@ async function parseRoadmapWorkbook(file) {
   }
 
   if (!deptRows.length && !timelineRows.length) {
-    throw new Error("No usable roadmap data found. Expected sheets like 'Dept & Cnt' and 'Communication Timeline'.");
+    throw new Error("No usable roadmap data found in workbook");
   }
 
   return {
@@ -200,16 +190,16 @@ function parseCommunicationTimeline(matrix) {
 function findHeaderRow(matrix, requiredKeys) {
   const alias = {
     abbreviation: ["abbreviation", "abbr", "dept"],
-    fulldepartmentname: ["fulldepartmentname", "departmentname", "full department name"],
+    fulldepartmentname: ["fulldepartmentname", "departmentname", "fulldepartmentname"],
     headcount: ["headcount", "count"],
     quarter: ["quarter", "qtr"],
     dept: ["dept", "department", "abbreviation"],
-    rolloutdate: ["rolloutdate", "rollout date", "date"],
+    rolloutdate: ["rolloutdate", "rolloutdate", "date"],
     qtr: ["qtr", "quarter"],
-    commsteward: ["commsteward", "comm steward", "steward", "owner"],
+    commsteward: ["commsteward", "commsteward", "steward", "owner"],
     note: ["note", "notes"],
     count: ["count", "headcount"],
-    conversionrate: ["conversionrate", "conversion", "conversion %", "conversionpercent", "digitalbadgeconversion"]
+    conversionrate: ["conversionrate", "conversion", "conversion", "conversionpercent", "digitalbadgeconversion"]
   };
 
   const limit = Math.min(matrix.length, 30);
@@ -241,7 +231,7 @@ function findColumnIndex(headers, aliases) {
   return -1;
 }
 
-function applyParsedData(parsed, fileName) {
+function applyParsedData(parsed) {
   const deptMap = new Map();
 
   parsed.deptRows.forEach((row) => {
@@ -289,6 +279,7 @@ function applyParsedData(parsed, fileName) {
   today.setHours(0, 0, 0, 0);
   const upcoming = withDates.filter((d) => d.rolloutDate >= today);
   const source = upcoming.length ? upcoming : withDates;
+
   const timeline = source
     .slice(0, 12)
     .map((d) => ({
@@ -303,12 +294,10 @@ function applyParsedData(parsed, fileName) {
   state.phases = buildPhaseStats(departments);
   state.health = buildHealthStats(departments);
   state.summary = buildSummary(departments);
-  state.meta = {
-    fileName,
-    sheetsScanned: parsed.sheetsScanned,
-    deptRows: parsed.deptRows.length,
-    timelineRows: parsed.timelineRows.length
-  };
+  state.meta.sheetsScanned = parsed.sheetsScanned;
+  state.meta.deptRows = parsed.deptRows.length;
+  state.meta.timelineRows = parsed.timelineRows.length;
+  state.meta.lastLoadedAt = new Date();
 }
 
 function createDeptRecord(acronym) {
@@ -409,7 +398,7 @@ function renderKpis() {
 
 function renderDepartmentBars() {
   if (!state.departments.length) {
-    departmentBars.innerHTML = '<p class="empty-state">Upload your roadmap file to see department analytics.</p>';
+    departmentBars.innerHTML = '<p class="empty-state">Roadmap data is not available yet.</p>';
     deptCoverageNote.textContent = "";
     return;
   }
@@ -504,7 +493,7 @@ function renderTable() {
   updateSortHeaderIndicators();
 
   if (!state.departments.length) {
-    departmentRows.innerHTML = '<tr><td colspan="8" class="empty-state">No department data yet. Upload the roadmap file.</td></tr>';
+    departmentRows.innerHTML = '<tr><td colspan="8" class="empty-state">No department data available.</td></tr>';
     return;
   }
 
@@ -591,12 +580,16 @@ function sortableValue(dept, key) {
 }
 
 function renderStatus() {
-  if (!state.meta.fileName) {
-    globalStatus.textContent = "Waiting for roadmap file";
+  if (!state.summary) {
+    globalStatus.textContent = "Loading latest roadmap data...";
     return;
   }
 
-  globalStatus.textContent = `Processed ${state.meta.fileName} (${state.meta.sheetsScanned} sheets)`;
+  const loadedTime = state.meta.lastLoadedAt
+    ? new Date(state.meta.lastLoadedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : "-";
+
+  globalStatus.textContent = `Live data loaded (${state.meta.sheetsScanned} sheets) • Updated ${loadedTime}`;
 }
 
 function deriveStatus(rolloutDate, note) {
@@ -727,5 +720,4 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-setupHandlers();
-render();
+setup();
