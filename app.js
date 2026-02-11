@@ -403,28 +403,25 @@ function renderDepartmentBars() {
     return;
   }
 
-  const top = state.departments.slice(0, 10);
-  const max = Math.max(...top.map((d) => d.headcount), 1);
+  const allDepartments = state.departments.slice();
 
-  departmentBars.innerHTML = top
+  departmentBars.innerHTML = allDepartments
     .map(
       (d) => `
       <div class="metric-row">
         <span class="metric-row-name" title="${escapeHtml(d.acronym)} - ${escapeHtml(d.name)}">${escapeHtml(d.acronym)} - ${escapeHtml(d.name || "Unmapped")}</span>
         <div class="track">
-          <div class="fill" style="width:${((d.headcount / max) * 100).toFixed(1)}%"></div>
-          <div class="fill-secondary" style="width:${((d.badgeUsers / max) * 100).toFixed(1)}%"></div>
+          <div class="fill" style="width:100%"></div>
+          <div class="fill-secondary" style="width:${Math.max(0, Math.min(100, d.conversionRate || 0)).toFixed(1)}%"></div>
         </div>
-        <span>${d.conversionRate != null ? `${formatNumber(d.badgeUsers)} / ${formatNumber(d.headcount)} (${d.conversionRate.toFixed(1)}%)` : `${formatNumber(d.headcount)} (no conversion)`}</span>
+        <span>${(d.conversionRate || 0).toFixed(1)}%</span>
       </div>
     `
     )
     .join("");
 
   deptCoverageNote.textContent = state.summary.totalHeadcount > 0
-    ? `${state.summary.conversionRate.toFixed(1)}% enterprise conversion (${formatNumber(state.summary.totalBadgeUsers)}/${formatNumber(
-        state.summary.totalHeadcount
-      )})`
+    ? `${state.summary.conversionRate.toFixed(1)}% enterprise conversion`
     : "No conversion-rate data found in workbook";
 }
 
