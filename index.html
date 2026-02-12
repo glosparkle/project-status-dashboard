@@ -38,13 +38,21 @@
 
         <article class="panel">
           <div class="panel-header">
+            <h2>Rollout Forecast</h2>
+            <span class="panel-note">Near-term delivery outlook</span>
+          </div>
+          <div id="forecastGrid" class="health-grid"></div>
+        </article>
+
+        <article class="panel span-2">
+          <div class="panel-header">
             <h2>Department Completion Coverage</h2>
             <span class="panel-note" id="deptCoverageNote"></span>
           </div>
-          <div id="departmentBars" class="metric-bars"></div>
+          <div id="departmentBars" class="metric-bars coverage-grid"></div>
         </article>
 
-        <article class="panel">
+        <article class="panel span-2">
           <div class="panel-header">
             <h2>Upcoming Milestones</h2>
             <span class="panel-note" id="timelineWindow"></span>
@@ -63,7 +71,6 @@
             <thead>
               <tr>
                 <th data-sort="acronym" data-label="Dept">Dept</th>
-                <th data-sort="name" data-label="Dept Name">Dept Name</th>
                 <th data-sort="headcount" data-label="Headcount">Headcount</th>
                 <th data-sort="badgeUsers" data-label="Digital Badge">Digital Badge</th>
                 <th data-sort="conversionRate" data-label="Conversion">Conversion</th>

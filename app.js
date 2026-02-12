@@ -26,6 +26,7 @@ const phaseBars = document.getElementById("phaseBars");
 const timelineList = document.getElementById("timelineList");
 const timelineWindow = document.getElementById("timelineWindow");
 const healthGrid = document.getElementById("healthGrid");
+const forecastGrid = document.getElementById("forecastGrid");
 const departmentRows = document.getElementById("departmentRows");
 const globalStatus = document.getElementById("globalStatus");
 const readinessTableHeaders = document.querySelectorAll("#readinessTable thead th[data-sort]");
@@ -283,7 +284,7 @@ function applyParsedData(parsed) {
   const timeline = source
     .slice(0, 12)
     .map((d) => ({
-      department: `${d.acronym} - ${d.name || "Unmapped"}`,
+      department: d.acronym,
       date: d.rolloutDate,
       milestone: d.milestoneTheme !== "-" ? d.milestoneTheme : `${d.quarter || "Unspecified"} rollout`,
       status: d.status
@@ -361,6 +362,7 @@ function render() {
   renderPhaseBars();
   renderTimeline();
   renderHealth();
+  renderForecast();
   renderTable();
   renderStatus();
 }
@@ -403,18 +405,20 @@ function renderDepartmentBars() {
     return;
   }
 
-  const allDepartments = state.departments.slice();
+  const allDepartments = state.departments.slice().sort((a, b) => a.acronym.localeCompare(b.acronym));
 
   departmentBars.innerHTML = allDepartments
     .map(
       (d) => `
-      <div class="metric-row">
-        <span class="metric-row-name" title="${escapeHtml(d.acronym)} - ${escapeHtml(d.name)}">${escapeHtml(d.acronym)} - ${escapeHtml(d.name || "Unmapped")}</span>
+      <div class="coverage-item">
+        <div class="coverage-item-head">
+          <span class="metric-row-name" title="${escapeHtml(d.acronym)}">${escapeHtml(d.acronym)}</span>
+          <span class="coverage-item-value">${(d.conversionRate || 0).toFixed(1)}%</span>
+        </div>
         <div class="track">
           <div class="fill" style="width:100%"></div>
           <div class="fill-secondary" style="width:${Math.max(0, Math.min(100, d.conversionRate || 0)).toFixed(1)}%"></div>
         </div>
-        <span>${(d.conversionRate || 0).toFixed(1)}%</span>
       </div>
     `
     )
@@ -486,11 +490,50 @@ function renderHealth() {
     .join("");
 }
 
+function renderForecast() {
+  if (!state.departments.length) {
+    forecastGrid.innerHTML = '<p class="empty-state">No forecast available.</p>';
+    return;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const next30 = new Date(today.getTime() + (30 * 86400000));
+  const next90 = new Date(today.getTime() + (90 * 86400000));
+
+  const scheduled = state.departments.filter((d) => d.rolloutDate instanceof Date);
+  const byDate = (endDate) =>
+    scheduled.filter((d) => d.rolloutDate >= today && d.rolloutDate <= endDate);
+
+  const next30Rows = byDate(next30);
+  const next90Rows = byDate(next90);
+  const unscheduled = state.departments.length - scheduled.length;
+  const next30Headcount = next30Rows.reduce((sum, d) => sum + d.headcount, 0);
+
+  const rows = [
+    { label: "Next 30 Days", value: `${next30Rows.length} depts` },
+    { label: "30-Day Headcount", value: formatNumber(next30Headcount) },
+    { label: "Next 90 Days", value: `${next90Rows.length} depts` },
+    { label: "Unscheduled", value: `${unscheduled} depts` }
+  ];
+
+  forecastGrid.innerHTML = rows
+    .map(
+      (row) => `
+      <div class="health-row">
+        <span>${escapeHtml(row.label)}</span>
+        <strong>${escapeHtml(row.value)}</strong>
+      </div>
+    `
+    )
+    .join("");
+}
+
 function renderTable() {
   updateSortHeaderIndicators();
 
   if (!state.departments.length) {
-    departmentRows.innerHTML = '<tr><td colspan="8" class="empty-state">No department data available.</td></tr>';
+    departmentRows.innerHTML = '<tr><td colspan="7" class="empty-state">No department data available.</td></tr>';
     return;
   }
 
@@ -500,7 +543,6 @@ function renderTable() {
       (d) => `
       <tr>
         <td>${escapeHtml(d.acronym)}</td>
-        <td>${escapeHtml(d.name || "Unmapped")}</td>
         <td>${formatNumber(d.headcount)}</td>
         <td>${d.conversionRate != null ? formatNumber(d.badgeUsers) : "-"}</td>
         <td>${d.conversionRate != null ? `${d.conversionRate.toFixed(1)}%` : "-"}</td>
